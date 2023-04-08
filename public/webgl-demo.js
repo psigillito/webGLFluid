@@ -72,6 +72,20 @@ function main()
     }
     `;
 
+    const vsParticle = 
+    `
+    attribute vec3 aVertexPosition;
+    void main() {
+      gl_PointSize = 2.0;
+      gl_Position = vec4(aVertexPosition, 1.0);
+    }
+    `;
+
+    const fsParticle = `
+    void main(void) {
+      gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0);
+    }
+    `;
 
 
 
@@ -129,7 +143,14 @@ function main()
       uniformLocations: { }
   }
 
-   
+   const shaderProgramParticle = initShaderProgram(gl, vsParticle, fsParticle);
+   const programInfoParticle = {
+    program: shaderProgramParticle,
+    attribLocations: {
+        vertexPosition: gl.getAttribLocation(shaderProgramParticle, "aVertexPosition"),
+    },
+    uniformLocations: { }
+}
 
     //do texture update here 
     //need shader program for filling 
@@ -188,8 +209,28 @@ function main()
       deltaTime = now - then;
       then = now;
   
+      //todo unblocking scene
       drawScene(gl, programInfo, buffers, texture);
+      //draw particle 
+
+      //gl.clearDepth (1.0);
+      //gl.enable(gl.DEPTH_TEST);
+      //gl.depthFunc(gl.LEQUAL);
   
+
+      gl.useProgram(programInfoParticle.program)
+      
+      
+      const positionBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+      const positions = [ 0.0,  0.0, 0.0];
+      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(positions),gl.STATIC_DRAW); 
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(0);
+
+      gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+      gl.drawArrays(gl.POINTS, 0, 1);
+
       requestAnimationFrame(render);
     }
 
@@ -224,7 +265,6 @@ function main()
 	  {
       console.log(x - 7);
  
-
       //update secondTexture with 1st Texture + position painted red 
       gl.bindFramebuffer(gl.FRAMEBUFFER, fb2);
       gl.viewport(0,0, 10,10);
@@ -256,9 +296,6 @@ function main()
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, secondTexture);
       gl.drawArrays(gl.TRIANGLES, offset, vertexCount);
-
-
-
 
       //go back to rendering normal 
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -302,8 +339,7 @@ function loadShader(gl, type, source)
     {
         var compilationLog = gl.getShaderInfoLog(shader);
         console.log('Shader compiler log: ' + compilationLog);
-
-        //alert("LOADING FAILED");
+        alert("LOADING FAILED");
     }
     return shader;
 }
