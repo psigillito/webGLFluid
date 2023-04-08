@@ -11,8 +11,6 @@ function main()
     const vsSource = `
     attribute vec4 aVertexPosition;
     attribute vec2 aTextureCoord;
-    uniform mat4 uModelViewMatrix;
-    uniform mat4 uProjectionMatrix;
     varying highp vec2 vTextureCoord;
     void main() {
       gl_Position = vec4(aVertexPosition.x, aVertexPosition.y, 0.0, 1.0);
@@ -49,7 +47,9 @@ function main()
       bool y = yIndex == targetPositionY;
       bool bothSelected = (y && x);
       highp float convertedBoth = float(bothSelected);
-      gl_FragColor = vec4((fxPosition/10.0) ,(convertedBoth * 0.5),0.0,1.0);
+      gl_FragColor = texture2D(uSampler, vTextureCoord);
+      gl_FragColor.x = gl_FragColor.x + (convertedBoth * 0.1);
+      //gl_FragColor = vec4((fxPosition/10.0) ,(convertedBoth * 0.5),0.0,1.0);
     }
     `;
 
@@ -64,7 +64,13 @@ function main()
     `;
 
 
-
+    const fsSourceBlank = `
+    varying highp vec2 vTextureCoord;
+    uniform sampler2D uSampler;
+    void main(void) {
+      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    }
+    `;
 
 
 
@@ -72,8 +78,10 @@ function main()
     //grab canvas and make webgl context
     const canvas = document.querySelector("#glcanvas");
     const gl = canvas.getContext("webgl2");
-
-    const fb = gl.createFramebuffer(); 
+    const buffers = initBuffers(gl);
+    const offset = 0;
+    const vertexCount = 6;
+    var mouseDown = false;
 
     
     if(gl == null){
@@ -84,7 +92,7 @@ function main()
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     const shaderProgram = initShaderProgram(gl,vsSource, fsSource);
-
+    
     const programInfo = {
         program: shaderProgram,
         attribLocations: {
@@ -111,21 +119,62 @@ function main()
         uniformLocations: { }
     }
 
+    const shaderProgram3 = initShaderProgram(gl,vsSource, fsSourceBlank);
+    const programInfo3 = {
+      program: shaderProgram3,
+      attribLocations: {
+          vertexPosition: gl.getAttribLocation(shaderProgram3, "aVertexPosition"),
+          textureCoord:  gl.getAttribLocation(shaderProgram3, "aTextureCoord")
+      },
+      uniformLocations: { }
+  }
 
    
 
     //do texture update here 
     //need shader program for filling 
-    const buffers = initBuffers(gl);
+    //const buffers = initBuffers(gl);
     const texture = loadTexture(gl, "Untitled.png");
+    const secondTexture = loadTexture(gl, "Untitled.png");
 
 
     //write red to texture 
     
+    //gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    //var attachmentPoint = gl.COLOR_ATTACHMENT0;
+    //gl.framebufferTexture2D( gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, texture, 0);
+    
+
+
+    const fb = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-    //attach texture as color attachment 
     const attachmentPoint = gl.COLOR_ATTACHMENT0;
-    gl.framebufferTexture2D( gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, texture, 0);
+    const textureType = gl.TEXTURE_2D;
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, attachmentPoint, 
+      textureType, texture, 0);
+
+    const fb2 = gl.createFramebuffer(); 
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb2);
+    gl.framebufferTexture2D( gl.FRAMEBUFFER, attachmentPoint, 
+    gl.TEXTURE_2D, secondTexture, 0);
+
+
+    //make sure both are all blank
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.viewport(0,0, 10,10);
+    gl.useProgram(programInfo3.program)
+    setPositionAttribute(gl, buffers, programInfo3);
+    setTextureAttribute(gl, buffers, programInfo3);
+    gl.drawArrays(gl.TRIANGLES, offset, vertexCount);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb2);
+    gl.viewport(0,0, 10,10);
+    gl.useProgram(programInfo3.program)
+    setPositionAttribute(gl, buffers, programInfo3);
+    setTextureAttribute(gl, buffers, programInfo3);
+    gl.drawArrays(gl.TRIANGLES, offset, vertexCount);
+
+
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
 
@@ -144,35 +193,77 @@ function main()
       requestAnimationFrame(render);
     }
 
+    function startDrag(x,y){
+      mouseDown=true;
+      setObstacle(x,y,true);
+    }
+
+    function endDrag() {
+      mouseDown = false;
+    }
+
+    function drag(x, y) {
+      if (mouseDown) {
+        setObstacle(x,y, false);
+      }
+    }
+
+    canvas.addEventListener('mousemove', event => {
+      drag(event.x, event.y);
+    });
+
+    canvas.addEventListener('mousedown', event => {
+      startDrag(event.x, event.y);
+    });
 
     canvas.addEventListener('mouseup', event => {
-      console.log(event.x -7);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      endDrag();      
+    });
+
+    function setObstacle(x,y,reset)
+	  {
+      console.log(x - 7);
+ 
+
+      //update secondTexture with 1st Texture + position painted red 
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb2);
+      gl.viewport(0,0, 10,10);
       gl.useProgram(programInfo2.program)
       setPositionAttribute(gl, buffers, programInfo2);
       setTextureAttribute(gl, buffers, programInfo2);
+      var targetCopy = gl.getUniformLocation(programInfo2.program, "uSampler");
+      gl.uniform1i(targetCopy, 0);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
 
+      //and event position 
 
       var targetLocation = gl.getUniformLocation(programInfo2.program, "xPosition");
-      gl.uniform1i(targetLocation, event.x - 8);
-      var targetLocation = gl.getUniformLocation(programInfo2.program, "yPosition");
-      gl.uniform1i(targetLocation, (100 - (event.y - 8 )));
-
-
-      // Bind the texture to texture unit 0
-      //gl.bindTexture(gl.TEXTURE_2D, texture);
-        // Tell the shader we bound the texture to texture unit 0
-      //gl.uniform1i(programInfo.uniformLocations.uSampler, 0);
-  
-      const offset = 0;
-      const vertexCount = 6;
+      gl.uniform1i(targetLocation, x - 8);
+      targetLocation = gl.getUniformLocation(programInfo2.program, "yPosition");
+      gl.uniform1i(targetLocation, (100 - (y - 8 )));
       gl.drawArrays(gl.TRIANGLES, offset, vertexCount);
 
+
+      //copy scond texture to first texture  
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.viewport(0,0, 10,10);
+      gl.useProgram(programInfo.program)
+      setPositionAttribute(gl, buffers, programInfo);
+      setTextureAttribute(gl, buffers, programInfo);
+      var targetCopy = gl.getUniformLocation(programInfo.program, "uSampler");
+      gl.uniform1i(targetCopy, 0);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, secondTexture);
+      gl.drawArrays(gl.TRIANGLES, offset, vertexCount);
+
+
+
+
+      //go back to rendering normal 
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      //draw to buffer all red 
-      //attach frame buffer 
-      //update the texture to paint pixel black 
-    });
+      gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+	  }
 
     requestAnimationFrame(render);
 
@@ -228,12 +319,11 @@ function loadTexture(gl, url) {
     // we'll update the texture with the contents of the image.
     const level = 0;
     const internalFormat = gl.RGBA;
-    const width = 1;
-    const height = 1;
+    const width = 10;
+    const height = 10;
     const border = 0;
     const srcFormat = gl.RGBA;
     const srcType = gl.UNSIGNED_BYTE;
-    const pixel = new Uint8Array([0, 0, 255, 255]); // opaque blue
     gl.texImage2D(
       gl.TEXTURE_2D,
       level,
@@ -243,39 +333,15 @@ function loadTexture(gl, url) {
       border,
       srcFormat,
       srcType,
-      pixel
+      null
     );
-  
-    const image = new Image();
-    image.onload = () => {
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.texImage2D(
-        gl.TEXTURE_2D,
-        level,
-        internalFormat,
-        srcFormat,
-        srcType,
-        image
-      );
-  
-      // WebGL1 has different requirements for power of 2 images
-      // vs. non power of 2 images so check if the image is a
-      // power of 2 in both dimensions.
-      //if (isPowerOf2(image.width) && isPowerOf2(image.height)) {
-        // Yes, it's a power of 2. Generate mips.
-        //gl.generateMipmap(gl.TEXTURE_2D);
-      //} else {
-        // No, it's not a power of 2. Turn off mips and set
-        // wrapping to clamp to edge
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+   
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
-      //}
-    };
-    image.src = url;
-  
     return texture;
   }
   function isPowerOf2(value) {
