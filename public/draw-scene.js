@@ -47,8 +47,8 @@ function drawScene(gl, programInfo, buffers, texture) {
 
     {
         const offset = 0;
-        const vertexCount = 4;
-        gl.drawArrays(gl.TRIANGLE_STRIP, offset, vertexCount);
+        const vertexCount = 6;
+        gl.drawArrays(gl.TRIANGLES, offset, vertexCount);
     }
 }
 
@@ -90,4 +90,6 @@ function setPositionAttribute(gl, buffers, programInfo) {
     gl.enableVertexAttribArray(programInfo.attribLocations.textureCoord);
   }
   
-  export { drawScene };
+  export { drawScene};
+  export {setPositionAttribute};
+  export {setTextureAttribute};
