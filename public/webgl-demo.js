@@ -203,6 +203,8 @@ function main()
     //null renders to canvas
     //gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     let then = 0;
+    var particlePositions = [ 0.0, 0.0, 0.0];
+
 
     function render(now) {
       now *= 0.001; // convert to seconds
@@ -223,8 +225,8 @@ function main()
       
       const positionBuffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-      const positions = [ 0.0,  0.0, 0.0];
-      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(positions),gl.STATIC_DRAW); 
+      particlePositions[0] = particlePositions[0] + 0.01;
+      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(particlePositions),gl.STATIC_DRAW); 
       gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
       gl.enableVertexAttribArray(0);
 
