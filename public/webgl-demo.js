@@ -6,6 +6,10 @@ main();
 
 let deltaTime = 0;
 
+
+
+
+
 function main()
 {
     const vsSource = 
@@ -84,13 +88,34 @@ function main()
     `#version 300 es
     in vec3 aVertexPosition;
     out vec3 outPosition;
-    
+    uniform float xArray[144];
+    //base sampling on a 2D array
+
+    //given vertex position need to determine where in array 
+
+
     void main() {
+    
+      //get what x cell it is in
+      //todo update to sampling surrounding 
+      highp float normalizedX = aVertexPosition.x + 1.0; 
+      //magic number 0.2, is the cell width ie 10 cells / range of 2 in coordinates = 0.2
+      int xCell = int(normalizedX / 0.2);
+    
+      // in coord system (-) is bottom so invert so smaller number on top
+      highp float normalizedY =  2.0 - (aVertexPosition.y + 1.0);
+      int yCell = int(normalizedY / 0.2);
+
+      //do row length * y cell to get right row then offset into it with x 
+      //magic number row length is 10
+      int targetCell = (10 * yCell) + xCell;  
+
+
       gl_PointSize = 2.0;
       gl_Position = vec4(aVertexPosition, 1.0);
-      gl_Position.x = gl_Position.x + 0.1;
+      gl_Position.x = gl_Position.x + xArray[targetCell];
       outPosition = aVertexPosition;
-      outPosition.x = outPosition.x + 0.1;
+      outPosition.x = outPosition.x + xArray[targetCell];
     }
     `;
 
@@ -111,6 +136,86 @@ function main()
     const offset = 0;
     const vertexCount = 6;
     var mouseDown = false;
+
+    //values for canvas 
+    var canvasWidth = canvas.width;
+    var canvasHeight = canvas.height; 
+    var res = 10; 
+    var cellPixelWidth = canvas.width / res; 
+
+    
+
+
+
+    class Fluid {
+      constructor(numX, numY) {
+        this.rowCount = numY + 2;
+        this.columnCount = numX + 2;
+        this.numCells = this.rowCount * this.columnCount;
+        this.u = new Array(this.numCells);
+        //X Velocities
+        for(var i = 0; i < this.u.length; i++)
+        {
+          this.u[i] = -0.1;
+        }
+        this.u[6] = 0.0;
+
+        //Y Velocities
+        this.v = new Array(this.rowCount);
+        for(var i = 0; i < this.rowCount; i++)
+        {
+          this.v[i] = new Float32Array(this.columnCount).fill(-0.1); //y velocities
+        }
+        //Solid = 0 , Open = 1
+        this.s = new Array(this.rowCount);
+        for(var i = 0; i < this.rowCount; i++)
+        {
+          this.s[i] = new Float32Array(this.columnCount).fill(1.0);
+        } 
+        //Pressure Values 
+        this.p = new Array(this.rowCount);
+        for(var i = 0; i < this.rowCount; i++)
+        {
+          this.p[i] = new Float32Array(this.columnCount).fill(0.0);
+        }
+        
+        //fill border around vector field with 1s 
+        for(var i = 0; i < this.columnCount; i++)
+        {
+          this.s[i][this.columnCount-1] = 0.0;
+          this.s[i][this.columnCount-2] = 0.0;
+          
+          this.s[0][i] = 0.0;
+          this.s[1][i] = 0.0;
+    
+          this.s[i][0] = 0.0;
+          this.s[i][1] = 0.0;
+          this.s[i][2] = 0.0;
+    
+    
+          this.s[this.rowCount - 2][i] = 0.0;
+          this.s[this.rowCount - 1][i] = 0.0;
+        }
+        //var num = numX * numY;
+    
+        //new X velocities
+        this.newU = new Array(this.rowCount);
+        for(var i = 0; i < this.rowCount; i++)
+        {
+          this.newU[i] = new Float32Array(this.columnCount).fill(-0.1);
+        }
+        //New Y Velocities
+        this.newV = new Array(this.rowCount);
+        for(var i = 0; i < this.rowCount; i++)
+        {
+          this.newV[i] = new Float32Array(this.columnCount).fill(-0.1); //y velocities
+        }
+      }
+    }
+
+
+    let fluid = new Fluid(res, res);
+
 
     
     if(gl == null){
@@ -192,13 +297,6 @@ function main()
     const secondTexture = loadTexture(gl, "Untitled.png");
 
 
-    //write red to texture 
-    
-    //gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-    //var attachmentPoint = gl.COLOR_ATTACHMENT0;
-    //gl.framebufferTexture2D( gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, texture, 0);
-    
-
 
     const fb = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
@@ -234,7 +332,7 @@ function main()
     //setup drawing particles
     let then = 0;
     const PARTICLE_COUNT = 1;
-    var particlePositions = [ 0.0, 0.0, 0.0];
+    var particlePositions = [ 0.0, 1.0, 0.0];
     gl.useProgram(programInfoParticle.program)
     const positionBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
@@ -267,11 +365,19 @@ function main()
       //draw texture 
       drawScene(gl, programInfo, buffers, texture);
        
-      //draw particle, also setup transform to feedback 
+      //DRAW PARTICE, also setup transform to feedback 
       gl.useProgram(programInfoParticle.program)
       gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
       gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
       gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+      //Pass x velocity as 2D uniform 
+      const uniformLocation = gl.getUniformLocation(programInfoParticle.program, 'xArray');
+      const flattenedArray = fluid.u.flat(); 
+      console.log("FLATTENED SIZE {}", flattenedArray.length);
+      gl.uniform1fv(uniformLocation, flattenedArray);
+
+
       gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, transformFeedback);
       gl.beginTransformFeedback(gl.POINTS);
       gl.drawArrays(gl.POINTS, 0, PARTICLE_COUNT);
