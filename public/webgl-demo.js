@@ -8,29 +8,36 @@ let deltaTime = 0;
 
 function main()
 {
-    const vsSource = `
-    attribute vec4 aVertexPosition;
-    attribute vec2 aTextureCoord;
-    varying highp vec2 vTextureCoord;
+    const vsSource = 
+    `#version 300 es
+    in vec4 aVertexPosition;
+    in vec2 aTextureCoord;
+    out vec2 vTextureCoord;
     void main() {
       gl_Position = vec4(aVertexPosition.x, aVertexPosition.y, 0.0, 1.0);
       vTextureCoord = aTextureCoord;
     }
     `;
- 
-    const fsSource = `
-    varying highp vec2 vTextureCoord;
+ /**/
+    const fsSource = 
+    `#version 300 es
+    in highp vec2 vTextureCoord;
     uniform sampler2D uSampler;
+    out highp vec4 outColor;
+
     void main(void) {
-      gl_FragColor = texture2D(uSampler, vTextureCoord);
+      outColor = texture(uSampler, vTextureCoord);
     }
     `;
 
-    const fsSource2 = `
-    varying highp vec2 vTextureCoord;
+    const fsSource2 = 
+    `#version 300 es
+    in highp vec2 vTextureCoord;
     uniform sampler2D uSampler;
     uniform int xPosition;
     uniform int yPosition;
+    out highp vec4 outColor;
+
     void main(void) {
 
       highp float fxPosition = gl_FragCoord.x;
@@ -47,43 +54,51 @@ function main()
       bool y = yIndex == targetPositionY;
       bool bothSelected = (y && x);
       highp float convertedBoth = float(bothSelected);
-      gl_FragColor = texture2D(uSampler, vTextureCoord);
-      gl_FragColor.x = gl_FragColor.x + (convertedBoth * 0.1);
-      //gl_FragColor = vec4((fxPosition/10.0) ,(convertedBoth * 0.5),0.0,1.0);
+      outColor = texture(uSampler, vTextureCoord);
+      outColor.x = outColor.x + (convertedBoth * 0.01);
     }
     `;
 
-    const vsSource2 = `
-    attribute vec4 aVertexPosition;
-    attribute vec2 aTextureCoord;
-    varying highp vec2 vTextureCoord;
+    const vsSource2 = 
+    `#version 300 es
+    in vec4 aVertexPosition;
+    in vec2 aTextureCoord;
+    out highp vec2 vTextureCoord;
     void main() {
       gl_Position = vec4(aVertexPosition.x, aVertexPosition.y, 0.0, 1.0);
       vTextureCoord = aTextureCoord;
-    }
-    `;
+    }`;
 
 
-    const fsSourceBlank = `
-    varying highp vec2 vTextureCoord;
+    const fsSourceBlank = 
+    `#version 300 es
+    in highp vec2 vTextureCoord;
     uniform sampler2D uSampler;
+    out highp vec4 outColor;
     void main(void) {
-      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+      outColor = vec4(0.0, 0.0, 0.0, 1.0);
     }
     `;
 
     const vsParticle = 
-    `
-    attribute vec3 aVertexPosition;
+    `#version 300 es
+    in vec3 aVertexPosition;
+    out vec3 outPosition;
+    
     void main() {
       gl_PointSize = 2.0;
       gl_Position = vec4(aVertexPosition, 1.0);
+      gl_Position.x = gl_Position.x + 0.1;
+      outPosition = aVertexPosition;
+      outPosition.x = outPosition.x + 0.1;
     }
     `;
 
-    const fsParticle = `
+    const fsParticle = 
+    `#version 300 es
+    out highp vec4 outColor;
     void main(void) {
-      gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0);
+      outColor = vec4(0.0, 0.0, 1.0, 1.0);
     }
     `;
 
@@ -143,7 +158,25 @@ function main()
       uniformLocations: { }
   }
 
-   const shaderProgramParticle = initShaderProgram(gl, vsParticle, fsParticle);
+
+  const shaderProgramParticle = gl.createProgram();
+
+   const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsParticle);
+   const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsParticle);
+
+   //create shader program as usual
+   gl.transformFeedbackVaryings(shaderProgramParticle, ['outPosition'], gl.SEPARATE_ATTRIBS);
+   gl.attachShader(shaderProgramParticle, vertexShader);
+   gl.attachShader(shaderProgramParticle, fragmentShader);
+   gl.linkProgram(shaderProgramParticle);
+
+   //if failed, alert 
+   if(!gl.getProgramParameter(shaderProgramParticle, gl.LINK_STATUS))
+   {
+       alert("Failed Manual LInking of particle shader.");
+   }
+
+
    const programInfoParticle = {
     program: shaderProgramParticle,
     attribLocations: {
@@ -180,7 +213,7 @@ function main()
     gl.TEXTURE_2D, secondTexture, 0);
 
 
-    //make sure both are all blank
+    //make sure both textures are blank for velocity 
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
     gl.viewport(0,0, 10,10);
     gl.useProgram(programInfo3.program)
@@ -195,43 +228,61 @@ function main()
     setTextureAttribute(gl, buffers, programInfo3);
     gl.drawArrays(gl.TRIANGLES, offset, vertexCount);
 
-
+    //reset to canvas output 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-
-   
-    //null renders to canvas
-    //gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    //setup drawing particles
     let then = 0;
+    const PARTICLE_COUNT = 1;
     var particlePositions = [ 0.0, 0.0, 0.0];
+    gl.useProgram(programInfoParticle.program)
+    const positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(particlePositions),gl.STATIC_DRAW); 
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(0);
 
 
+    //setup Transform feedback and buffer to receive positions
+    var returnedVertexArray = gl.createVertexArray();
+    gl.bindVertexArray(returnedVertexArray);
+    var returnedPositions = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, returnedPositions);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array( particlePositions), gl.STREAM_COPY);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(0);
+
+    gl.bindVertexArray(null);
+    var transformFeedback = gl.createTransformFeedback();
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, transformFeedback);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, returnedPositions);
+    /* End Transform feedback*/
+
+    //Render texture and particle 
     function render(now) {
       now *= 0.001; // convert to seconds
       deltaTime = now - then;
       then = now;
   
-      //todo unblocking scene
+      //draw texture 
       drawScene(gl, programInfo, buffers, texture);
-      //draw particle 
-
-      //gl.clearDepth (1.0);
-      //gl.enable(gl.DEPTH_TEST);
-      //gl.depthFunc(gl.LEQUAL);
-  
-
+       
+      //draw particle, also setup transform to feedback 
       gl.useProgram(programInfoParticle.program)
-      
-      
-      const positionBuffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-      particlePositions[0] = particlePositions[0] + 0.01;
-      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(particlePositions),gl.STATIC_DRAW); 
       gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-      gl.enableVertexAttribArray(0);
-
       gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-      gl.drawArrays(gl.POINTS, 0, 1);
+      gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, transformFeedback);
+      gl.beginTransformFeedback(gl.POINTS);
+      gl.drawArrays(gl.POINTS, 0, PARTICLE_COUNT);
+      gl.endTransformFeedback();
+     
+      //get output of new particle positions and store into array      
+      const outputData = new Float32Array(particlePositions);
+      gl.getBufferSubData(gl.TRANSFORM_FEEDBACK_BUFFER, 0, outputData);
+      //put outputdata back into buffer to be used 
+      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(outputData),gl.STATIC_DRAW);
 
       requestAnimationFrame(render);
     }
@@ -341,7 +392,7 @@ function loadShader(gl, type, source)
     {
         var compilationLog = gl.getShaderInfoLog(shader);
         console.log('Shader compiler log: ' + compilationLog);
-        alert("LOADING FAILED");
+      //  alert("LOADING FAILED");
     }
     return shader;
 }
