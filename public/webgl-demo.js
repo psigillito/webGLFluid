@@ -34,12 +34,18 @@ function main()
     }
     `;
 
-    const fsSource2 = 
+    //TODO Keep Updating to Use new Approach, draw color based on 2d array
+    const fsSource2 =  //updating here to use 2D arrays 
     `#version 300 es
     in highp vec2 vTextureCoord;
     uniform sampler2D uSampler;
+
+    uniform highp float xArray[100];
+    uniform highp float yArray[100];
+
     uniform int xPosition;
     uniform int yPosition;
+
     out highp vec4 outColor;
 
     void main(void) {
@@ -47,19 +53,19 @@ function main()
       highp float fxPosition = gl_FragCoord.x;
       highp float fyPosition = gl_FragCoord.y;
 
-      int xIndex = int(fxPosition);
-      int yIndex = int(fyPosition);
 
       //magic number, we know width is 100
       int targetPosition = xPosition / 10;
       int targetPositionY = yPosition / 10;
 
-      bool x = xIndex == targetPosition; 
-      bool y = yIndex == targetPositionY;
-      bool bothSelected = (y && x);
-      highp float convertedBoth = float(bothSelected);
-      outColor = texture(uSampler, vTextureCoord);
-      outColor.x = outColor.x + (convertedBoth * 0.01);
+      int yoffSet = int(gl_FragCoord.y) / 10;
+      int newTarget  = yoffSet*10 + (int(gl_FragCoord.x) / 10);
+
+      //TODO NOW ADD Y VALUE TO GREEN
+      highp float xValue = (xArray[newTarget]);
+      highp float yValue = (yArray[newTarget]);
+
+      outColor = vec4(xValue, yValue, 0.0, 1.0);
     }
     `;
 
@@ -88,34 +94,42 @@ function main()
     `#version 300 es
     in vec3 aVertexPosition;
     out vec3 outPosition;
-    uniform float xArray[144];
-    //base sampling on a 2D array
-
-    //given vertex position need to determine where in array 
-
-
+    uniform highp float xArray[100];
+    uniform highp float yArray[100];
     void main() {
-    
-      //get what x cell it is in
-      //todo update to sampling surrounding 
+      
+
       highp float normalizedX = aVertexPosition.x + 1.0; 
+      highp float normalizedY = aVertexPosition.y + 1.0;
+
       //magic number 0.2, is the cell width ie 10 cells / range of 2 in coordinates = 0.2
       int xCell = int(normalizedX / 0.2);
-    
-      // in coord system (-) is bottom so invert so smaller number on top
-      highp float normalizedY =  2.0 - (aVertexPosition.y + 1.0);
       int yCell = int(normalizedY / 0.2);
+      //yCell = 10 - yCell;
+
+      //if returns 0 at end so add ! to return true at end
+      // in coord system (-) is bottom so invert so smaller number on top
+      //highp float normalizedY =  2.0 - (aVertexPosition.y + 1.0);
+
+
 
       //do row length * y cell to get right row then offset into it with x 
       //magic number row length is 10
       int targetCell = (10 * yCell) + xCell;  
 
+      bool lastCell = (targetCell % 10) != 0;
+      int nextCell = targetCell + (int(lastCell));
+
+      highp float xMovement = (xArray[targetCell] + xArray[nextCell])*0.5;
+      highp float yMovement = (yArray[targetCell] + yArray[nextCell])*0.5; 
 
       gl_PointSize = 2.0;
       gl_Position = vec4(aVertexPosition, 1.0);
-      gl_Position.x = gl_Position.x + xArray[targetCell];
+      gl_Position.x = gl_Position.x + xMovement;
+      gl_Position.y = gl_Position.y + yMovement;
       outPosition = aVertexPosition;
-      outPosition.x = outPosition.x + xArray[targetCell];
+      outPosition.x = outPosition.x + xMovement;
+      outPosition.y = outPosition.y + yMovement;
     }
     `;
 
@@ -143,28 +157,34 @@ function main()
     var res = 10; 
     var cellPixelWidth = canvas.width / res; 
 
-    
-
+    var mouseStartX = 0.0;
+		var mouseStartY = 0.0;
+    var sceneDT = 1.0 / 60.0;
 
 
     class Fluid {
       constructor(numX, numY) {
         this.rowCount = numY + 2;
         this.columnCount = numX + 2;
-        this.numCells = this.rowCount * this.columnCount;
+        this.numCells = numX * numY;
         this.u = new Array(this.numCells);
         //X Velocities
         for(var i = 0; i < this.u.length; i++)
         {
-          this.u[i] = -0.1;
+          var val = i % 10;
+
+          this.u[i] = (val * 0.0);
         }
-        this.u[6] = 0.0;
+        //this.u[0] = 0.5;
 
         //Y Velocities
-        this.v = new Array(this.rowCount);
-        for(var i = 0; i < this.rowCount; i++)
+        this.v = new Array(this.numCells);
+        for(var i = 0; i < this.v.length; i++)
         {
-          this.v[i] = new Float32Array(this.columnCount).fill(-0.1); //y velocities
+          var val = i % 10;
+
+          //this.v[i] = 0.0; //y velocities
+          this.v[i] = (val * 0.0);
         }
         //Solid = 0 , Open = 1
         this.s = new Array(this.rowCount);
@@ -332,7 +352,7 @@ function main()
     //setup drawing particles
     let then = 0;
     const PARTICLE_COUNT = 1;
-    var particlePositions = [ 0.0, 1.0, 0.0];
+    var particlePositions = [ -0.5, 0.58, 0.0];
     gl.useProgram(programInfoParticle.program)
     const positionBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
@@ -363,19 +383,50 @@ function main()
       then = now;
   
       //draw texture 
-      drawScene(gl, programInfo, buffers, texture);
-       
+      //drawScene(gl, programInfo, buffers, texture);
+             //update secondTexture with 1st Texture + position painted red 
+      //gl.bindFramebuffer(gl.FRAMEBUFFER, fb2);
+      gl.clearColor(0.0, 0.0, 0.0, 1.0);
+      gl.clearDepth (1.0);
+      gl.enable(gl.DEPTH_TEST);
+      gl.depthFunc(gl.LEQUAL);
+  
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      
+      gl.viewport(0,0, 100,100);
+      gl.useProgram(programInfo2.program)
+      setPositionAttribute(gl, buffers, programInfo2);
+      setTextureAttribute(gl, buffers, programInfo2);
+      var targetCopy = gl.getUniformLocation(programInfo2.program, "uSampler");
+      gl.uniform1i(targetCopy, 0);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+
+
+      //Pass x and y velocity as 2D uniform 
+      const uniformLocation1 = gl.getUniformLocation(programInfo2.program, 'xArray');
+      gl.uniform1fv(uniformLocation1, fluid.u);
+      const uniformLocation3 = gl.getUniformLocation(programInfo2.program, 'yArray');
+      gl.uniform1fv(uniformLocation3, fluid.v);
+      gl.drawArrays(gl.TRIANGLES, offset, vertexCount);
+
+
       //DRAW PARTICE, also setup transform to feedback 
       gl.useProgram(programInfoParticle.program)
       gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
       gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
       gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
-      //Pass x velocity as 2D uniform 
+      //Pass x and y velocity as 2D uniform 
       const uniformLocation = gl.getUniformLocation(programInfoParticle.program, 'xArray');
       const flattenedArray = fluid.u.flat(); 
-      console.log("FLATTENED SIZE {}", flattenedArray.length);
-      gl.uniform1fv(uniformLocation, flattenedArray);
+      //console.log("FLATTENED SIZE {}", flattenedArray.length);
+      gl.uniform1fv(uniformLocation, fluid.u);
+
+      const uniformLocation2 = gl.getUniformLocation(programInfoParticle.program, 'yArray');
+      const flattenedArray2 = fluid.v.flat(); 
+      //console.log("FLATTENED SIZE {}", flattenedArray2.length);
+      gl.uniform1fv(uniformLocation2, fluid.v);
 
 
       gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, transformFeedback);
@@ -420,41 +471,76 @@ function main()
       endDrag();      
     });
 
+
+    function convertToPixelCoordinate(index, cellWidth, coordType)
+    {
+      //todo 10 a magic number, investigate why + 1 on math 
+      var xIndex = (index % 10) + 1;
+      var yIndex = 10 - Math.floor(index / 10);
+      var pixelX = 0;
+      var pixelY = 0;
+      if(coordType == 'u')
+      {       
+        pixelX = Math.floor(xIndex * cellWidth); 
+        pixelY = Math.floor( (yIndex * cellWidth) + (cellWidth/2.0));
+        return [pixelX, pixelY];
+      }
+      else
+      {
+        pixelX = Math.floor(xIndex * cellWidth + (cellWidth/2.0)); 
+        pixelY = Math.floor(yIndex * cellWidth);
+        return [pixelX, pixelY];
+      }
+    }
+
+
     function setObstacle(x,y,reset)
 	  {
       console.log(x - 7);
  
-      //update secondTexture with 1st Texture + position painted red 
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fb2);
-      gl.viewport(0,0, 10,10);
-      gl.useProgram(programInfo2.program)
-      setPositionAttribute(gl, buffers, programInfo2);
-      setTextureAttribute(gl, buffers, programInfo2);
-      var targetCopy = gl.getUniformLocation(programInfo2.program, "uSampler");
-      gl.uniform1i(targetCopy, 0);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-
-      //and event position 
-
-      var targetLocation = gl.getUniformLocation(programInfo2.program, "xPosition");
-      gl.uniform1i(targetLocation, x - 8);
-      targetLocation = gl.getUniformLocation(programInfo2.program, "yPosition");
-      gl.uniform1i(targetLocation, (100 - (y - 8 )));
-      gl.drawArrays(gl.TRIANGLES, offset, vertexCount);
 
 
-      //copy scond texture to first texture  
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-      gl.viewport(0,0, 10,10);
-      gl.useProgram(programInfo.program)
-      setPositionAttribute(gl, buffers, programInfo);
-      setTextureAttribute(gl, buffers, programInfo);
-      var targetCopy = gl.getUniformLocation(programInfo.program, "uSampler");
-      gl.uniform1i(targetCopy, 0);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, secondTexture);
-      gl.drawArrays(gl.TRIANGLES, offset, vertexCount);
+      //need to update velocity field based on drag
+      //simple first, if in  area, make -0.1 
+      //probably doesnt need to go to gpu, just updating one location 
+      //HERE
+      var velocityX = 0.0;
+      var velocityY = 0.0;
+      if(!reset)
+      {
+        velocityX = (x - mouseStartX)/sceneDT;
+        velocityY = (y - mouseStartY)/sceneDT;
+      }
+      mouseStartX = x;
+      mouseStartY = y;
+      var mouseRadius = 0.15;
+
+      //iterate over every cell in 
+      for(var i = 0; i < fluid.u.length; ++i)
+      {
+        var uPixelCoord = convertToPixelCoordinate(i, cellPixelWidth,'u');
+				var vPixelCoord = convertToPixelCoordinate(i, cellPixelWidth,'v');
+      
+        var uDistance = Math.sqrt(
+          Math.pow( (uPixelCoord[0] - x),2) 
+          + 
+          Math.pow( (uPixelCoord[1] - y),2));
+
+        var vDistance = Math.sqrt(
+            Math.pow( (vPixelCoord[0] - x),2) 
+            + 
+            Math.pow( (vPixelCoord[1] - y),2));
+
+        //check u first
+        if(	uDistance < 5  /*&& scene.fluid.s[i][j] != 0.0 && scene.fluid.s[i][j-1] != 0.0*/ )  
+        {
+          fluid.u[i] = 0.001 * velocityX;
+        } 
+        if(vDistance < 5 /*&& scene.fluid.s[i][j] != 0.0 && scene.fluid.s[i-1][j] != 0.0*/)
+        {
+          fluid.v[i] = - 0.001 * velocityY;
+        }
+      }
 
       //go back to rendering normal 
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
