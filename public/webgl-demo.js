@@ -6,6 +6,17 @@ main();
 
 let deltaTime = 0;
 
+var mouseStartX = 0.0;
+var mouseStartY = 0.0;
+var sceneDT = 1.0 /60.0; 
+//TODO Simplify
+//upscale to 20x20 -- resolution v cell width 
+//make sampling be four sides of cell 
+//solve pressure 
+//solve advect through itself 
+// increase particles
+// put particles in hash  
+
 function main()
 {
     const vsSource = 
@@ -29,7 +40,7 @@ function main()
       outColor = texture(uSampler, vTextureCoord);
     }
     `;
-
+    //dragging 
     const fsSource2 = 
     `#version 300 es
     in highp vec2 vTextureCoord;
@@ -37,7 +48,11 @@ function main()
     uniform int xPosition;
     uniform int yPosition;
     out highp vec4 outColor;
-    
+
+    uniform highp float mouseX;
+    uniform highp float mouseY; 
+    uniform highp float mouseXVelocity;
+    uniform highp float mouseYVelocity;
 
     void main(void) {
 
@@ -51,12 +66,18 @@ function main()
       int targetPosition = xPosition / 10;
       int targetPositionY = yPosition / 10;
 
+
       bool x = xIndex == targetPosition; 
       bool y = yIndex == targetPositionY;
       bool bothSelected = (y && x);
+      //bool notSelected = (!y || !x);
+      highp float notSelectedF = float(!bothSelected);
       highp float convertedBoth = float(bothSelected);
       outColor = texture(uSampler, vTextureCoord);
-      outColor.x = outColor.x + (convertedBoth * 0.01);
+
+      //if not selected do originalColor*1, if selected do 1* newvalues 
+      outColor = (outColor * notSelectedF) + (vec4( mouseXVelocity, mouseYVelocity, outColor.z, 1.0) * convertedBoth);
+      //outColor.x = outColor.x + (convertedBoth * mouseXVelocity * 0.0001);
     }
     `;
 
@@ -314,6 +335,8 @@ function main()
 
     function drag(x, y) {
       if (mouseDown) {
+        //console.log(x);
+
         setObstacle(x,y, false);
       }
     }
@@ -332,8 +355,21 @@ function main()
 
     function setObstacle(x,y,reset)
 	  {
-      console.log(x - 7);
- 
+      //console.log(x - 7);
+      var velocityX = 0.0;
+      var velocityY = 0.0;
+      if(!reset)
+      {
+        velocityX = (x - mouseStartX);
+        velocityY = -(y - mouseStartY);
+      }
+      console.log(velocityX);
+
+      mouseStartX = x;
+      mouseStartY = y;
+      var mouseRadius = 0.15;
+
+
       //update secondTexture with 1st Texture + position painted red 
       gl.bindFramebuffer(gl.FRAMEBUFFER, fb2);
       gl.viewport(0,0, 10,10);
@@ -346,6 +382,15 @@ function main()
       gl.bindTexture(gl.TEXTURE_2D, texture);
 
       //and event position 
+      var mouseXTarget = gl.getUniformLocation(programInfo2.program, "mouseX");
+      gl.uniform1f(mouseXTarget, x);
+      var mouseYTarget = gl.getUniformLocation(programInfo2.program, "mouseY");
+      gl.uniform1f(mouseYTarget, y);
+
+      var mouseXVelocity = gl.getUniformLocation(programInfo2.program, "mouseXVelocity");
+      gl.uniform1f(mouseXVelocity, velocityX);
+      var mouseYVelocity = gl.getUniformLocation(programInfo2.program, "mouseYVelocity");
+      gl.uniform1f(mouseYVelocity, velocityY);
 
       var targetLocation = gl.getUniformLocation(programInfo2.program, "xPosition");
       gl.uniform1i(targetLocation, x - 8);
@@ -369,6 +414,50 @@ function main()
       //go back to rendering normal 
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+      /********************** */
+      //console.log(x - 7);
+ 
+
+
+      //need to update velocity field based on drag
+      //simple first, if in  area, make -0.1 
+      //probably doesnt need to go to gpu, just updating one location 
+      //HERE
+
+
+      //iterate over every cell in 
+      /*for(var i = 0; i < fluid.u.length; ++i)
+      {
+        var uPixelCoord = convertToPixelCoordinate(i, cellPixelWidth,'u');
+				var vPixelCoord = convertToPixelCoordinate(i, cellPixelWidth,'v');
+      
+        var uDistance = Math.sqrt(
+          Math.pow( (uPixelCoord[0] - x),2) 
+          + 
+          Math.pow( (uPixelCoord[1] - y),2));
+
+        var vDistance = Math.sqrt(
+            Math.pow( (vPixelCoord[0] - x),2) 
+            + 
+            Math.pow( (vPixelCoord[1] - y),2));
+
+        //check u first
+        {
+          fluid.u[i] = 0.001 * velocityX;
+        } 
+        {
+          fluid.v[i] = - 0.001 * velocityY;
+        }
+      }
+
+      //go back to rendering normal 
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);*/
+
+
+
+
 	  }
 
     requestAnimationFrame(render);
