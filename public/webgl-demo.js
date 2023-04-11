@@ -37,6 +37,7 @@ function main()
     uniform int xPosition;
     uniform int yPosition;
     out highp vec4 outColor;
+    
 
     void main(void) {
 
@@ -84,13 +85,21 @@ function main()
     `#version 300 es
     in vec3 aVertexPosition;
     out vec3 outPosition;
+    uniform sampler2D velocityField;
     
+
     void main() {
+      //convert the quad coordinates with (-1,-1)  in lower left with range of -1 to 1 
+      //to image (0,0) at lower left and range from 0 to 1.
+      highp float xPosition = (aVertexPosition.x + 1.0) / 2.0;
+      highp float yPosition = (aVertexPosition.y + 1.0) / 2.0;
+      vec4 currentVelocity = texture( velocityField, vec2(xPosition, yPosition));
+
       gl_PointSize = 2.0;
       gl_Position = vec4(aVertexPosition, 1.0);
-      gl_Position.x = gl_Position.x + 0.1;
-      outPosition = aVertexPosition;
-      outPosition.x = outPosition.x + 0.1;
+      gl_Position.x = gl_Position.x + currentVelocity.x;
+      gl_Position.y = gl_Position.y + currentVelocity.y;
+      outPosition = vec3(gl_Position);
     }
     `;
 
@@ -236,12 +245,19 @@ function main()
     const PARTICLE_COUNT = 1;
     var particlePositions = [ 0.0, 0.0, 0.0];
     gl.useProgram(programInfoParticle.program)
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
     const positionBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
     gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(particlePositions),gl.STATIC_DRAW); 
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(0);
 
+    //Do particle position image 
+    var velocityUniformId = gl.getUniformLocation(programInfoParticle.program, "velocityField");
+    gl.uniform1i(velocityUniformId, 0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
 
     //setup Transform feedback and buffer to receive positions
     var returnedVertexArray = gl.createVertexArray();
