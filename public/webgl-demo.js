@@ -5,7 +5,6 @@ import { setTextureAttribute } from "./draw-scene.js";
 main();
 
 let deltaTime = 0;
-
 var mouseStartX = 0.0;
 var mouseStartY = 0.0;
 var sceneDT = 1.0 /60.0; 
@@ -19,6 +18,7 @@ var sceneDT = 1.0 /60.0;
 
 function main()
 {
+
     const vsSource = 
     `#version 300 es
     in vec4 aVertexPosition;
@@ -40,11 +40,12 @@ function main()
       outColor = texture(uSampler, vTextureCoord);
     }
     `;
-    //dragging 
+    //dragging mouse updating backgroun 
     const fsSource2 = 
     `#version 300 es
     in highp vec2 vTextureCoord;
     uniform sampler2D uSampler;
+    uniform int res;
     uniform int xPosition;
     uniform int yPosition;
     out highp vec4 outColor;
@@ -62,9 +63,9 @@ function main()
       int xIndex = int(fxPosition);
       int yIndex = int(fyPosition);
 
-      //magic number, we know width is 100
-      int targetPosition = xPosition / 10;
-      int targetPositionY = yPosition / 10;
+      //magic number, we know width is 10
+      int targetPosition = xPosition / res;
+      int targetPositionY = yPosition / res;
 
 
       bool x = xIndex == targetPosition; 
@@ -141,6 +142,10 @@ function main()
     const offset = 0;
     const vertexCount = 6;
     var mouseDown = false;
+    const res = 20;
+
+    const cellWidth = canvas.width / res;
+
 
     
     if(gl == null){
@@ -215,11 +220,9 @@ function main()
     uniformLocations: { }
 }
 
-    //do texture update here 
-    //need shader program for filling 
-    //const buffers = initBuffers(gl);
-    const texture = loadTexture(gl, "Untitled.png");
-    const secondTexture = loadTexture(gl, "Untitled.png");
+    //create 2 textures for velocity
+    const texture = loadTexture(gl, res);
+    const secondTexture = loadTexture(gl, res);
 
 
     //write red to texture 
@@ -245,14 +248,14 @@ function main()
 
     //make sure both textures are blank for velocity 
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-    gl.viewport(0,0, 10,10);
+    gl.viewport(0,0, res,res);
     gl.useProgram(programInfo3.program)
     setPositionAttribute(gl, buffers, programInfo3);
     setTextureAttribute(gl, buffers, programInfo3);
     gl.drawArrays(gl.TRIANGLES, offset, vertexCount);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb2);
-    gl.viewport(0,0, 10,10);
+    gl.viewport(0,0, res,res);
     gl.useProgram(programInfo3.program)
     setPositionAttribute(gl, buffers, programInfo3);
     setTextureAttribute(gl, buffers, programInfo3);
@@ -372,7 +375,7 @@ function main()
 
       //update secondTexture with 1st Texture + position painted red 
       gl.bindFramebuffer(gl.FRAMEBUFFER, fb2);
-      gl.viewport(0,0, 10,10);
+      gl.viewport(0,0, res,res);//
       gl.useProgram(programInfo2.program)
       setPositionAttribute(gl, buffers, programInfo2);
       setTextureAttribute(gl, buffers, programInfo2);
@@ -380,6 +383,10 @@ function main()
       gl.uniform1i(targetCopy, 0);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, texture);
+
+      //resolution
+      var resTarget = gl.getUniformLocation(programInfo2.program, "res");
+      gl.uniform1i(resTarget, cellWidth);
 
       //and event position 
       var mouseXTarget = gl.getUniformLocation(programInfo2.program, "mouseX");
@@ -395,13 +402,13 @@ function main()
       var targetLocation = gl.getUniformLocation(programInfo2.program, "xPosition");
       gl.uniform1i(targetLocation, x - 8);
       targetLocation = gl.getUniformLocation(programInfo2.program, "yPosition");
-      gl.uniform1i(targetLocation, (100 - (y - 8 )));
+      gl.uniform1i(targetLocation, (canvas.height - (y - 8 )));
       gl.drawArrays(gl.TRIANGLES, offset, vertexCount);
 
 
       //copy scond texture to first texture  
       gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-      gl.viewport(0,0, 10,10);
+      gl.viewport(0,0, res,res);
       gl.useProgram(programInfo.program)
       setPositionAttribute(gl, buffers, programInfo);
       setTextureAttribute(gl, buffers, programInfo);
@@ -502,7 +509,7 @@ function loadShader(gl, type, source)
     return shader;
 }
 
-function loadTexture(gl, url) {
+function loadTexture(gl, res) {
     const texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
   
@@ -513,8 +520,8 @@ function loadTexture(gl, url) {
     // we'll update the texture with the contents of the image.
     const level = 0;
     const internalFormat = gl.RGBA;
-    const width = 10;
-    const height = 10;
+    const width = res;
+    const height = res;
     const border = 0;
     const srcFormat = gl.RGBA;
     const srcType = gl.UNSIGNED_BYTE;
@@ -537,7 +544,4 @@ function loadTexture(gl, url) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
     return texture;
-  }
-  function isPowerOf2(value) {
-    return (value & (value - 1)) === 0;
   }
