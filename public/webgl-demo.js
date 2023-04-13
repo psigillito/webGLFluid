@@ -9,7 +9,7 @@ var mouseStartX = 0.0;
 var mouseStartY = 0.0;
 var sceneDT = 1.0 /60.0; 
 //TODO Simplify
-//upscale to 20x20 -- resolution v cell width 
+//upscale to 20x20 -- resolution v cell width -- DONE
 //make sampling be four sides of cell 
 //solve pressure 
 //solve advect through itself 
@@ -77,10 +77,9 @@ function main()
       outColor = texture(uSampler, vTextureCoord);
 
       //if not selected do originalColor*1, if selected do 1* newvalues 
-      outColor = (outColor * notSelectedF) + (vec4( mouseXVelocity, mouseYVelocity, outColor.z, 1.0) * convertedBoth);
+      outColor = (outColor * notSelectedF) + (vec4( mouseXVelocity * 0.2, mouseYVelocity * 0.2, outColor.z, 1.0) * convertedBoth);
       //outColor.x = outColor.x + (convertedBoth * mouseXVelocity * 0.0001);
-    }
-    `;
+    }`;
 
     const vsSource2 = 
     `#version 300 es
@@ -117,10 +116,12 @@ function main()
       highp float yPosition = (aVertexPosition.y + 1.0) / 2.0;
       vec4 currentVelocity = texture( velocityField, vec2(xPosition, yPosition));
 
-      gl_PointSize = 2.0;
+      
+
+      gl_PointSize = 10.0;
       gl_Position = vec4(aVertexPosition, 1.0);
-      gl_Position.x = gl_Position.x + currentVelocity.x;
-      gl_Position.y = gl_Position.y + currentVelocity.y;
+      gl_Position.x = gl_Position.x + (currentVelocity.x * 0.1); //slowdown 
+      gl_Position.y = gl_Position.y + (currentVelocity.y * 0.1);
       outPosition = vec3(gl_Position);
     }
     `;
@@ -130,8 +131,93 @@ function main()
     out highp vec4 outColor;
     void main(void) {
       outColor = vec4(0.0, 0.0, 1.0, 1.0);
-    }
-    `;
+    }`;
+
+    
+  const pressureFsource = 
+  `#version 300 es
+  in highp vec2 vTextureCoord;
+  uniform sampler2D velocityField;
+  uniform int cellWidth;
+  out highp vec4 outColor;
+
+
+  highp float computeDivergence(highp vec2 velocity) {
+    highp float dx = 1.0 / float(80.0);
+    highp vec2 velocity_x0 = texture(velocityField, gl_FragCoord.xy / vec2(80)).xy;
+    highp vec2 velocity_x1 = texture(velocityField, (gl_FragCoord.xy + vec2(dx, 0.0)) / vec2(80.0)).xy;
+    highp vec2 velocity_y0 = texture(velocityField, gl_FragCoord.xy / vec2(80.0)).xy;
+    highp vec2 velocity_y1 = texture(velocityField, (gl_FragCoord.xy + vec2(0.0, dx)) / vec2(80.0)).xy;
+    highp float divergence = dot(velocity_x1 - velocity_x0, vec2(1.0, 0.0)) + dot(velocity_y1 - velocity_y0, vec2(0.0, 1.0));
+    return divergence / dx;
+  }
+
+
+  void main(void) {
+    //get the cell then get the surrounding 
+    //todo add s values, we are assuming always 1 
+    highp float sLeft   = 1.0;
+    highp float sRight  = 1.0;
+    highp float sUp     = 1.0;
+    highp float sBelow  = 1.0;
+    highp float sTotal  = 2.0;//sLeft + sRight + sUp + sBelow;
+    
+    //texture coords 0 to 1
+    highp float fxPosition = vTextureCoord.x;
+    highp float fyPosition = vTextureCoord.y;
+
+    //magic number, we know width is 10
+    //magic number, we know res is 20 and range is 0 to 1 
+    highp float cellWidthInCoord = 1.0 / 20.0;
+    highp float right = (fxPosition + cellWidthInCoord);
+    highp float down  = (fyPosition - cellWidthInCoord);
+    highp vec4 rightVel   = texture(velocityField, vec2( right ,fxPosition));
+    highp vec4 currentVel = texture(velocityField,  vTextureCoord );
+    highp vec4 downVel    = texture(velocityField, vec2(fxPosition, down));
+
+    highp float divergence = computeDivergence(currentVel.xy);//(rightVel.x - currentVel.x) +  (downVel.y - currentVel.y);
+
+    highp float pressure = -divergence / sTotal;
+    pressure = pressure * 1.9;
+    
+    currentVel.x = ((currentVel.x - (sLeft  * pressure)) + (rightVel.x   + (sRight * pressure))) *0.5;
+    //rightVel.x   = rightVel.x   + (sRight * pressure);
+    currentVel.y = ((currentVel.y - (sUp    * pressure)) + (downVel.y   + (sBelow * pressure))) *0.5 ;
+    //downVel.y    = ;
+
+    outColor = currentVel;
+  }`;
+
+
+
+  const advectFsource = 
+  `#version 300 es
+  in highp vec2 vTextureCoord;
+  uniform sampler2D velocityField;
+  uniform int cellWidth;
+  out highp vec4 outColor;
+
+  void main(void) {
+    //get the cell then get the surrounding 
+    //todo add s values, we are assuming always 1 
+       
+    //texture coords 0 to 1
+    highp float fxPosition = vTextureCoord.x;
+    highp float fyPosition = vTextureCoord.y;  
+
+    //magic number, we know width is 10
+    //magic number, we know res is 20 and range is 0 to 1 
+    highp float cellWidthInCoord = 1.0 / 20.0;
+     
+    highp vec4 currentVel = texture(velocityField,  vTextureCoord );
+    
+    //get previous values based on sampling 
+    highp vec4 oldVal = texture(velocityField, vec2(vTextureCoord.x + ( currentVel.x * 0.05 ) , vTextureCoord.y));
+  
+    outColor = oldVal;
+  }`;
+
+
 
 
 
@@ -142,9 +228,70 @@ function main()
     const offset = 0;
     const vertexCount = 6;
     var mouseDown = false;
-    const res = 20;
+    const res = 80;
 
     const cellWidth = canvas.width / res;
+
+
+
+    function solveIncompressibility(dt)
+    {
+  
+      const shaderProgramPressure = initShaderProgram(gl,vsSource, pressureFsource);
+  
+      const programInfoPressure = {
+          program: shaderProgramPressure,
+          attribLocations: {
+              vertexPosition: gl.getAttribLocation(shaderProgram2, "aVertexPosition"),
+              textureCoord:  gl.getAttribLocation(shaderProgram2, "aTextureCoord")
+          },
+          uniformLocations: { }
+      }
+  
+      var iterations = 3;
+      var cp = 10 / dt;
+      for(var x = 0; x < iterations; x++)
+      {
+  
+        //update secondTexture with 1st Texture + pressure changes 
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb2);
+        gl.viewport(0,0, res,res);
+        gl.useProgram(programInfoPressure.program)
+        setPositionAttribute(gl, buffers, programInfoPressure);
+        setTextureAttribute(gl, buffers, programInfoPressure);
+        // uniform sampler2D velocityField;
+        // uniform int cellWidth;
+        //
+        var targetCopy = gl.getUniformLocation(programInfo2.program, "velocityField");
+        gl.uniform1i(targetCopy, 0);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+  
+        //resolution
+        var resTarget = gl.getUniformLocation(programInfo2.program, "cellWidth");
+        gl.uniform1i(resTarget, cellWidth);
+        gl.drawArrays(gl.TRIANGLES, offset, vertexCount);
+  
+
+        //copy scond texture to first texture  
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+        gl.viewport(0,0, res,res);
+        gl.useProgram(programInfo.program)
+        setPositionAttribute(gl, buffers, programInfo);
+        setTextureAttribute(gl, buffers, programInfo);
+        var targetCopy = gl.getUniformLocation(programInfo.program, "uSampler");
+        gl.uniform1i(targetCopy, 0);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, secondTexture);
+        gl.drawArrays(gl.TRIANGLES, offset, vertexCount);
+
+        //go back to rendering normal 
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+  
+      }
+    }
+
 
 
     
@@ -191,7 +338,18 @@ function main()
           textureCoord:  gl.getAttribLocation(shaderProgram3, "aTextureCoord")
       },
       uniformLocations: { }
-  }
+    }
+
+    const shaderProgramAdvect = initShaderProgram(gl,vsSource, advectFsource);
+  
+      const programInfoAdvect = {
+          program: shaderProgramAdvect,
+          attribLocations: {
+              vertexPosition: gl.getAttribLocation(shaderProgramAdvect, "aVertexPosition"),
+              textureCoord:  gl.getAttribLocation(shaderProgramAdvect, "aTextureCoord")
+          },
+          uniformLocations: { }
+      }
 
 
   const shaderProgramParticle = gl.createProgram();
@@ -324,6 +482,49 @@ function main()
       gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
       gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(outputData),gl.STATIC_DRAW);
 
+      
+      solveIncompressibility(sceneDT);
+
+
+      /*Advect Velocity*/
+           /* //update secondTexture with 1st Texture + pressure changes 
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fb2);
+            gl.viewport(0,0, res,res);
+            gl.useProgram(programInfoAdvect.program)
+            setPositionAttribute(gl, buffers, programInfoAdvect);
+            setTextureAttribute(gl, buffers, programInfoAdvect);
+            // uniform sampler2D velocityField;
+            // uniform int cellWidth;
+            //
+            var targetCopy = gl.getUniformLocation(programInfo2.program, "velocityField");
+            gl.uniform1i(targetCopy, 0);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+      
+            //resolution
+            var resTarget = gl.getUniformLocation(programInfo2.program, "cellWidth");
+            gl.uniform1i(resTarget, cellWidth);
+            gl.drawArrays(gl.TRIANGLES, offset, vertexCount);
+      
+
+            //copy scond texture to first texture  
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+            gl.viewport(0,0, res,res);
+            gl.useProgram(programInfo.program)
+            setPositionAttribute(gl, buffers, programInfo);
+            setTextureAttribute(gl, buffers, programInfo);
+            var targetCopy = gl.getUniformLocation(programInfo.program, "uSampler");
+            gl.uniform1i(targetCopy, 0);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, secondTexture);
+            gl.drawArrays(gl.TRIANGLES, offset, vertexCount);
+
+            //go back to rendering normal 
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);*/
+
+      
+
       requestAnimationFrame(render);
     }
 
@@ -375,7 +576,7 @@ function main()
 
       //update secondTexture with 1st Texture + position painted red 
       gl.bindFramebuffer(gl.FRAMEBUFFER, fb2);
-      gl.viewport(0,0, res,res);//
+      gl.viewport(0,0, res,res);
       gl.useProgram(programInfo2.program)
       setPositionAttribute(gl, buffers, programInfo2);
       setTextureAttribute(gl, buffers, programInfo2);
@@ -545,3 +746,6 @@ function loadTexture(gl, res) {
 
     return texture;
   }
+
+
+
